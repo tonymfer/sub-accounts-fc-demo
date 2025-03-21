@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@coinbase/wallet-sdk':
-        specifier: 4.4.0-canary.1
-        version: 4.4.0-canary.1(@types/react@18.3.19)(bufferutil@4.0.9)(react@18.3.1)(typescript@5.8.2)(use-sync-external-store@1.4.0(react@18.3.1))(utf-8-validate@5.0.10)(zod@3.24.2)
+        specifier: file:./sdk-package.tgz
+        version: file:sdk-package.tgz(@types/react@18.3.19)(bufferutil@4.0.9)(react@18.3.1)(typescript@5.8.2)(use-sync-external-store@1.4.0(react@18.3.1))(utf-8-validate@5.0.10)(zod@3.24.2)
       '@neynar/nodejs-sdk':
         specifier: ^2.19.0
         version: 2.19.0(bufferutil@4.0.9)(encoding@0.1.13)(supports-color@9.4.0)(typescript@5.8.2)(utf-8-validate@5.0.10)(zod@3.24.2)
@@ -122,8 +122,9 @@ packages:
   '@coinbase/wallet-sdk@4.3.0':
     resolution: {integrity: sha512-T3+SNmiCw4HzDm4we9wCHCxlP0pqCiwKe4sOwPH3YAK2KSKjxPRydKu6UQJrdONFVLG7ujXvbd/6ZqmvJb8rkw==}
 
-  '@coinbase/wallet-sdk@4.4.0-canary.1':
-    resolution: {integrity: sha512-Bu0IcVpxeflucIlJrUvl7UTC1uqgiK6gYSERXFtVesysaghRZLsT/y6BFCxJUwL8iqa179xydnMvj5WU3E1XHQ==}
+  '@coinbase/wallet-sdk@file:sdk-package.tgz':
+    resolution: {integrity: sha512-7xpen2SrYCRpTcZ9AEcRTeic3YmddebXR0GuN+SmUecWumagOHdXtCLPZvnBH15S+cYK0QRsoTr3j5ugC5mW0A==, tarball: file:sdk-package.tgz}
+    version: 4.4.0-canary.1
 
   '@ecies/ciphers@0.2.3':
     resolution: {integrity: sha512-tapn6XhOueMwht3E2UzY0ZZjYokdaw9XtL9kEyjhQ/Fb9vL9xTFbOaI+fV0AWvTpYu4BNloC6getKW6NtSg4mA==}
@@ -2346,6 +2347,14 @@ packages:
       typescript:
         optional: true
 
+  viem@2.23.13:
+    resolution: {integrity: sha512-f3RkcrzGhU79GfBb9GHUL0m3e3LUsNudXIQTFp4fit5hUGb0ew9KOYZ6cCY5d4Melj3noBy2zq0K2fV+mp+Cpg==}
+    peerDependencies:
+      typescript: '>=5.0.4'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   viem@2.23.2:
     resolution: {integrity: sha512-NVmW/E0c5crMOtbEAqMF0e3NmvQykFXhLOc/CkLIXOlzHSA6KXVz3CYVmaKqBF8/xtjsjHAGjdJN3Ru1kFJLaA==}
     peerDependencies:
@@ -2544,7 +2553,7 @@ snapshots:
       eventemitter3: 5.0.1
       preact: 10.26.4
 
-  '@coinbase/wallet-sdk@4.4.0-canary.1(@types/react@18.3.19)(bufferutil@4.0.9)(react@18.3.1)(typescript@5.8.2)(use-sync-external-store@1.4.0(react@18.3.1))(utf-8-validate@5.0.10)(zod@3.24.2)':
+  '@coinbase/wallet-sdk@file:sdk-package.tgz(@types/react@18.3.19)(bufferutil@4.0.9)(react@18.3.1)(typescript@5.8.2)(use-sync-external-store@1.4.0(react@18.3.1))(utf-8-validate@5.0.10)(zod@3.24.2)':
     dependencies:
       '@noble/hashes': 1.4.0
       clsx: 1.2.1
@@ -3067,7 +3076,7 @@ snapshots:
   '@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.9)(typescript@5.8.2)(utf-8-validate@5.0.10)(zod@3.24.2)':
     dependencies:
       '@safe-global/safe-gateway-typescript-sdk': 3.22.9
-      viem: 2.23.12(bufferutil@4.0.9)(typescript@5.8.2)(utf-8-validate@5.0.10)(zod@3.24.2)
+      viem: 2.23.13(bufferutil@4.0.9)(typescript@5.8.2)(utf-8-validate@5.0.10)(zod@3.24.2)
     transitivePeerDependencies:
       - bufferutil
       - typescript
@@ -5101,6 +5110,23 @@ snapshots:
       - zod
 
   viem@2.23.12(bufferutil@4.0.9)(typescript@5.8.2)(utf-8-validate@5.0.10)(zod@3.24.2):
+    dependencies:
+      '@noble/curves': 1.8.1
+      '@noble/hashes': 1.7.1
+      '@scure/bip32': 1.6.2
+      '@scure/bip39': 1.5.4
+      abitype: 1.0.8(typescript@5.8.2)(zod@3.24.2)
+      isows: 1.0.6(ws@8.18.1(bufferutil@4.0.9)(utf-8-validate@5.0.10))
+      ox: 0.6.9(typescript@5.8.2)(zod@3.24.2)
+      ws: 8.18.1(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    optionalDependencies:
+      typescript: 5.8.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+      - zod
+
+  viem@2.23.13(bufferutil@4.0.9)(typescript@5.8.2)(utf-8-validate@5.0.10)(zod@3.24.2):
     dependencies:
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.7.1

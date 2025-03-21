@@ -1,236 +1,285 @@
-/**
- * Based on https://github.com/scaffold-eth/burner-connector
- */
-
-import type {
-  EIP1193RequestFn,
-  Hex,
-  SendTransactionParameters,
-  SignTypedDataParameters,
-  Transport,
-  WalletRpcSchema,
-} from "viem";
 import {
-  BaseError,
-  createPublicClient,
-  custom,
-  fromHex,
+  createCoinbaseWalletSDK,
+  getCryptoKeyAccount,
+  Preference,
+  ProviderInterface,
+} from "@coinbase/wallet-sdk";
+import {
+  AddEthereumChainParameter,
+  Address,
+  Chain,
   getAddress,
-  http,
+  Hex,
+  Mutable,
+  numberToHex,
+  ProviderRpcError,
   SwitchChainError,
+  UserRejectedRequestError,
 } from "viem";
-import { createBundlerClient, SmartAccount } from "viem/account-abstraction";
-import { hexToBigInt, numberToHex } from "viem/utils";
-import { createConnector } from "wagmi";
-import { createCoinbaseWalletSDK } from "@coinbase/wallet-sdk";
-import { baseSepolia } from "viem/chains";
+import { ChainNotConfiguredError, Connector, createConnector } from "wagmi";
+import { coinbaseWallet } from "wagmi/connectors";
 
-export class ConnectorNotConnectedError extends BaseError {
-  override name = "ConnectorNotConnectedError";
-  constructor() {
-    super("Connector not connected.");
+type Version4Parameters = Mutable<
+  Omit<
+    Parameters<typeof createCoinbaseWalletSDK>[0],
+    | "appChainIds" // set via wagmi config
+    | "preference"
+  > & {
+    // TODO(v3): Remove `Preference['options']`
+    /**
+     * Preference for the type of wallet to display.
+     * @default 'all'
+     */
+    preference?: Preference["options"] | Preference | undefined;
   }
-}
-
-export class ChainNotConfiguredError extends BaseError {
-  override name = "ChainNotConfiguredError";
-  constructor() {
-    super("Chain not configured.");
-  }
-}
-
-type Provider = ReturnType<
-  Transport<"custom", Record<any, any>, EIP1193RequestFn<WalletRpcSchema>>
 >;
 
-export const connectorId = "passkeySmartWallet" as const;
-export const connectorName = "Passkey Smart Wallet" as const;
+export function version4(parameters: Version4Parameters) {
+  type Provider = ProviderInterface & {
+    // for backwards compatibility
+    close?(): void;
+  };
+  type Properties = {
+    connect(parameters?: {
+      chainId?: number | undefined;
+      instantOnboarding?: boolean | undefined;
+      isReconnecting?: boolean | undefined;
+    }): Promise<{
+      accounts: readonly Address[];
+      chainId: number;
+    }>;
+  };
 
-export const smartWalletConnector = ({
-  account,
-}: {
-  account: SmartAccount;
-}) => {
-  let connected = true;
-  let connectedChainId: number;
+  let walletProvider: Provider | undefined;
+  let sdk: ReturnType<typeof createCoinbaseWalletSDK> | undefined;
 
-  const sdk = createCoinbaseWalletSDK({
-    appName: 'Sub-Accounts Demo',
-    appChainIds: [baseSepolia.id],
-    preference: {
-      options: "smartWalletOnly",
-      keysUrl: 'https://keys-dev.coinbase.com/connect',
-    },
-    
-  });
+  let accountsChanged: Connector["onAccountsChanged"] | undefined;
+  let chainChanged: Connector["onChainChanged"] | undefined;
+  let disconnect: Connector["onDisconnect"] | undefined;
 
-  return createConnector<Provider>((config) => ({
-    id: connectorId,
-    name: connectorName,
-    type: connectorId,
-    async connect({ chainId } = {}) {
-      const provider = await this.getProvider();
-      const accounts = await provider.request({
-        method: "eth_accounts",
-      });
-      let currentChainId = await this.getChainId();
-      if (chainId && currentChainId !== chainId && this.switchChain) {
-        const chain = await this.switchChain({ chainId });
-        currentChainId = chain.id;
-      }
-      connected = true;
-      return { accounts, chainId: currentChainId };
-    },
-    async getProvider({ chainId } = {}) {
-      const request: EIP1193RequestFn = async ({ method, params }) => {
-        const chain =
-          config.chains.find((x) => x.id === chainId || connectedChainId) ??
-          config.chains[0];
+  async function getSdk(config: any) {
+    if (sdk) return sdk;
 
-        const transport =
-          config.transports?.[chain.id] ?? http(chain.rpcUrls.default.http[0]);
-        if (!transport) throw new Error("No transport found for chain");
-
-        const rpcClient = createPublicClient({
-          chain: chain,
-          transport,
-        });
-
-        const bundlerClient = createBundlerClient({
-          chain,
-          account,
-          transport: http(),
-          userOperation: {
-            async estimateFeesPerGas(parameters) {
-              const estimatedFees = await rpcClient.estimateFeesPerGas();
-              return {
-                ...estimatedFees,
-                maxFeePerGas: BigInt(
-                  Math.round(Number(estimatedFees.maxFeePerGas) * 1.12) // pimlico bundler needs a buffer
-                ),
-                maxPriorityFeePerGas: BigInt(
-                  Math.round(Number(estimatedFees.maxPriorityFeePerGas) * 1.12) // pimlico bundler needs a buffer
-                ),
-              };
-            },
-          },
-        });
-
-        if (method === "eth_requestAccounts") {
-          return [account.address];
-        }
-
-        if (method === "eth_sendTransaction") {
-          const actualParams = (params as SendTransactionParameters[])[0];
-
-          if (!actualParams?.to) {
-            throw new Error("to is required");
-          }
-
-          const hash = await bundlerClient.sendUserOperation({
-            calls: [
-              {
-                data: actualParams?.data,
-                to: actualParams?.to,
-                value: actualParams?.value
-                  ? hexToBigInt(actualParams.value as unknown as Hex)
-                  : undefined,
-                // gas: actualParams?.gas
-                //   ? hexToBigInt(actualParams.gas as unknown as Hex)
-                //   : undefined,
-                // nonce: actualParams?.nonce
-                //   ? hexToBigInt(actualParams.nonce as unknown as Hex)
-                //   : undefined,
-                // maxPriorityFeePerGas: actualParams?.maxPriorityFeePerGas
-                //   ? hexToBigInt(
-                //       actualParams.maxPriorityFeePerGas as unknown as Hex
-                //     )
-                //   : undefined,
-                // maxFeePerGas: actualParams?.maxFeePerGas
-                //   ? hexToBigInt(actualParams.maxFeePerGas as unknown as Hex)
-                //   : undefined,
-                // gasPrice: (actualParams?.gasPrice
-                //   ? hexToBigInt(actualParams.gasPrice as unknown as Hex)
-                //   : undefined) as undefined,
-              },
-            ],
-          });
-
-          const tx = await bundlerClient.waitForUserOperationReceipt({
-            hash,
-          });
-
-          return tx.receipt.transactionHash;
-        }
-
-        if (method === "personal_sign") {
-          // first param is Hex data representation of message,
-          // second param is address of the signer
-          const rawMessage = (params as [`0x${string}`, `0x${string}`])[0];
-          const signature = await account.signMessage({
-            message: { raw: rawMessage },
-          });
-
-          return signature;
-        }
-
-        if (method === "eth_signTypedData_v4") {
-          // first param is address of the signer
-          // second param is stringified typed data
-          const [_, typedData] = params as [
-            `0x${string}`,
-            SignTypedDataParameters,
-          ];
-
-          const signature = await account.signTypedData(typedData);
-
-          return signature;
-        }
-
-        if (method === "eth_accounts") {
-          return [account.address];
-        }
-
-        if (method === "wallet_switchEthereumChain") {
-          type Params = [{ chainId: Hex }];
-          connectedChainId = fromHex((params as Params)[0].chainId, "number");
-          this.onChainChanged(connectedChainId.toString());
-          return;
-        }
-
-        const body = { method, params };
-        const result = (await transport({ chain }).request(body)) as any;
-        return result;
+    const preference = (() => {
+      if (typeof parameters.preference === "string")
+        return { options: parameters.preference };
+      return {
+        ...parameters.preference,
+        options: parameters.preference?.options ?? "all",
       };
+    })();
 
-      return custom({ request })({ retryCount: 0 });
+    const { createCoinbaseWalletSDK } = await import("@coinbase/wallet-sdk");
+    const sdk_ = createCoinbaseWalletSDK({
+      ...parameters,
+      appChainIds: config.chains.map((x: Chain) => x.id),
+      preference,
+      toSubAccountSigner: getCryptoKeyAccount
+    });
+
+    sdk = sdk_;
+
+    return sdk;
+  }
+
+  return createConnector<Provider, Properties>((config) => ({
+    id: "coinbaseWalletSDK",
+    name: "Coinbase Wallet",
+    rdns: "com.coinbase.wallet",
+    type: coinbaseWallet.type,
+    async connect({ chainId, ...rest } = {}) {
+      try {
+        const sdk = await getSdk(config);
+
+        const provider = await this.getProvider();
+
+        const signer = await getCryptoKeyAccount();
+
+        console.log("signer", signer);
+
+        const response = (await provider.request({
+          method: "wallet_connect",
+          params: [
+            {
+              version: "1",
+              capabilities: {
+                addSubAccount: {
+                  account: {
+                    type: "create",
+                    keys: [
+                      {
+                        type: "webauthn-p256",
+                        key: signer.account?.publicKey,
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        })) as {
+          accounts: {
+            address: Address;
+            capabilities: {
+              addSubAccount?: {
+                address: Address;
+                factory: Hex;
+                factoryData: Hex;
+              };
+            };
+          }[];
+        };
+
+        // const accounts = (
+        //   (await provider.request({
+        //     method: 'eth_requestAccounts',
+        //     params:
+        //       'instantOnboarding' in rest && rest.instantOnboarding
+        //         ? [{ onboarding: 'instant' }]
+        //         : [],
+        //   })) as string[]
+        // ).map((x) => getAddress(x))
+
+        if (!accountsChanged) {
+          accountsChanged = this.onAccountsChanged.bind(this);
+          provider.on("accountsChanged", accountsChanged);
+        }
+        if (!chainChanged) {
+          chainChanged = this.onChainChanged.bind(this);
+          provider.on("chainChanged", chainChanged);
+        }
+        if (!disconnect) {
+          disconnect = this.onDisconnect.bind(this);
+          provider.on("disconnect", disconnect);
+        }
+
+        // Switch to chain if provided
+        let currentChainId = await this.getChainId();
+        if (chainId && currentChainId !== chainId) {
+          const chain = await this.switchChain!({ chainId }).catch((error) => {
+            if (error.code === UserRejectedRequestError.code) throw error;
+            return { id: currentChainId };
+          });
+          currentChainId = chain?.id ?? currentChainId;
+        }
+
+        return {
+          accounts: [getAddress(response.accounts[0].capabilities.addSubAccount?.address ?? response.accounts[0].address)],
+          chainId: currentChainId,
+        };
+      } catch (error) {
+        if (
+          /(user closed modal|accounts received is empty|user denied account|request rejected)/i.test(
+            (error as Error).message
+          )
+        )
+          throw new UserRejectedRequestError(error as Error);
+        throw error;
+      }
     },
-    onChainChanged(chain) {
-      const chainId = Number(chain);
-      config.emitter.emit("change", { chainId });
+    async disconnect() {
+      const provider = await this.getProvider();
+
+      if (accountsChanged) {
+        provider.removeListener("accountsChanged", accountsChanged);
+        accountsChanged = undefined;
+      }
+      if (chainChanged) {
+        provider.removeListener("chainChanged", chainChanged);
+        chainChanged = undefined;
+      }
+      if (disconnect) {
+        provider.removeListener("disconnect", disconnect);
+        disconnect = undefined;
+      }
+
+      provider.disconnect();
+      provider.close?.();
     },
     async getAccounts() {
-      if (!connected) throw new ConnectorNotConnectedError();
       const provider = await this.getProvider();
-      const accounts = await provider.request({ method: "eth_accounts" });
-      const walletAddress = accounts.map((x) =>
-        getAddress(x)
-      )[0] as `0x${string}`;
-      return [walletAddress];
-    },
-    async onDisconnect() {
-      config.emitter.emit("disconnect");
-      connected = false;
+      return (
+        (await provider.request({
+          method: "eth_accounts",
+        })) as string[]
+      ).map((x) => getAddress(x));
     },
     async getChainId() {
       const provider = await this.getProvider();
-      const hexChainId = await provider.request({ method: "eth_chainId" });
-      return fromHex(hexChainId, "number");
+      const chainId = (await provider.request({
+        method: "eth_chainId",
+      })) as Hex;
+      return Number(chainId);
+    },
+    async getProvider() {
+      if (!walletProvider) {
+        const sdk = await getSdk(config);
+        walletProvider = sdk.getProvider();
+      }
+
+      return walletProvider;
     },
     async isAuthorized() {
-      if (!connected) return false;
-      const accounts = await this.getAccounts();
-      return !!accounts.length;
+      try {
+        const accounts = await this.getAccounts();
+        return !!accounts.length;
+      } catch {
+        return false;
+      }
+    },
+    async switchChain({ addEthereumChainParameter, chainId }) {
+      const chain = config.chains.find((chain) => chain.id === chainId);
+      if (!chain) throw new SwitchChainError(new ChainNotConfiguredError());
+
+      const provider = await this.getProvider();
+
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: numberToHex(chain.id) }],
+        });
+        return chain;
+      } catch (error) {
+        // Indicates chain is not added to provider
+        if ((error as ProviderRpcError).code === 4902) {
+          try {
+            let blockExplorerUrls: string[] | undefined;
+            if (addEthereumChainParameter?.blockExplorerUrls)
+              blockExplorerUrls = addEthereumChainParameter.blockExplorerUrls;
+            else
+              blockExplorerUrls = chain.blockExplorers?.default.url
+                ? [chain.blockExplorers?.default.url]
+                : [];
+
+            let rpcUrls: readonly string[];
+            if (addEthereumChainParameter?.rpcUrls?.length)
+              rpcUrls = addEthereumChainParameter.rpcUrls;
+            else rpcUrls = [chain.rpcUrls.default?.http[0] ?? ""];
+
+            const addEthereumChain = {
+              blockExplorerUrls,
+              chainId: numberToHex(chainId),
+              chainName: addEthereumChainParameter?.chainName ?? chain.name,
+              iconUrls: addEthereumChainParameter?.iconUrls,
+              nativeCurrency:
+                addEthereumChainParameter?.nativeCurrency ??
+                chain.nativeCurrency,
+              rpcUrls,
+            } satisfies AddEthereumChainParameter;
+
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [addEthereumChain],
+            });
+
+            return chain;
+          } catch (error) {
+            throw new UserRejectedRequestError(error as Error);
+          }
+        }
+
+        throw new SwitchChainError(error as Error);
+      }
     },
     onAccountsChanged(accounts) {
       if (accounts.length === 0) this.onDisconnect();
@@ -239,21 +288,26 @@ export const smartWalletConnector = ({
           accounts: accounts.map((x) => getAddress(x)),
         });
     },
-    async switchChain({ chainId }) {
-      const provider = await this.getProvider();
-      const chain = config.chains.find((x) => x.id === chainId);
-      if (!chain) throw new SwitchChainError(new ChainNotConfiguredError());
-
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: numberToHex(chainId) }],
-      });
-      return chain;
+    onChainChanged(chain) {
+      const chainId = Number(chain);
+      config.emitter.emit("change", { chainId });
     },
-    disconnect() {
-      console.log("disconnect from passkey smart wallet");
-      connected = false;
-      return Promise.resolve();
+    async onDisconnect(_error) {
+      config.emitter.emit("disconnect");
+
+      const provider = await this.getProvider();
+      if (accountsChanged) {
+        provider.removeListener("accountsChanged", accountsChanged);
+        accountsChanged = undefined;
+      }
+      if (chainChanged) {
+        provider.removeListener("chainChanged", chainChanged);
+        chainChanged = undefined;
+      }
+      if (disconnect) {
+        provider.removeListener("disconnect", disconnect);
+        disconnect = undefined;
+      }
     },
   }));
-};
+}

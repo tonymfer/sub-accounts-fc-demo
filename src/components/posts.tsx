@@ -1,21 +1,14 @@
-"use client";
-
-import { useQuery } from "@tanstack/react-query";
-import { Heart, Repeat2, Send, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  useAccount,
-  useClient,
-  usePublicClient,
-  useWaitForTransactionReceipt,
-  useWriteContract,
-} from "wagmi";
-import { formatDate } from "../lib/utils";
-import { useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { ExternalLink, Heart, Repeat2, Send } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { encodeFunctionData, erc20Abi, parseUnits } from "viem";
+import { useAccount } from "wagmi";
+import { useSendCalls, useWaitForCallsStatus } from "wagmi/experimental";
 import { USDC_TOKEN_ADDRESS } from "../lib/constants";
-import { erc20Abi, formatUnits, parseUnits } from "viem";
+import { formatDate } from "../lib/utils";
 
 export interface Post {
   id: string;
@@ -52,7 +45,6 @@ interface PostsResponse {
   posts: Post[];
 }
 
-// Add this fetch function outside the component
 const fetchPosts = async (): Promise<PostsResponse> => {
   const response = await fetch("/api/posts");
   if (!response.ok) {
@@ -61,7 +53,7 @@ const fetchPosts = async (): Promise<PostsResponse> => {
   return response.json();
 };
 
-export default function Posts() {
+export default function Posts({ onTipSuccess }: { onTipSuccess: () => void }) {
   const { data, isLoading, error } = useQuery<PostsResponse>({
     queryKey: ["posts"],
     queryFn: fetchPosts,
@@ -79,43 +71,89 @@ export default function Posts() {
 
   return (
     <div className="space-y-4">
-      {data?.posts.map((post) => <PostCard key={post.id} post={post} />)}
+      {data?.posts.map((post) => (
+        <PostCard key={post.id} post={post} onTipSuccess={onTipSuccess} />
+      ))}
     </div>
   );
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostCard({
+  post,
+  onTipSuccess,
+}: {
+  post: Post;
+  onTipSuccess: () => void;
+}) {
   const account = useAccount();
-  const { writeContractAsync } = useWriteContract();
-  const publicClient = usePublicClient();
+  const {
+    sendCalls,
+    data: sendCallsId,
+    reset: resetSendCalls,
+    isPending: isSendCallsPending,
+  } = useSendCalls();
+  const { data: callsStatus, isLoading: isCallsStatusLoading } =
+    useWaitForCallsStatus({
+      id: sendCallsId,
+    });
+  const [toastId, setToastId] = useState<string | number | null>(null);
 
   const handleTip = useCallback(async () => {
-    const hash = await writeContractAsync({
-      address: USDC_TOKEN_ADDRESS,
-      abi: erc20Abi,
-      functionName: "transfer",
-      args: [
-        post.author.verified_addresses.eth_addresses[0],
-        parseUnits("0.01", 6),
+    sendCalls({
+      calls: [
+        {
+          to: USDC_TOKEN_ADDRESS,
+          data: encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "transfer",
+            args: [
+              post.author.verified_addresses.eth_addresses[0],
+              parseUnits("0.01", 6),
+            ],
+          }),
+          value: "0x0",
+        },
       ],
+      capabilities: {
+        paymasterService: {
+          url: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL,
+        },
+      },
+      account: account.address,
     });
 
-    const toastId = toast("Sending tip...", {
+    const toastId_ = toast("Sending tip...", {
       description: `Tipping @${post.author.username}`,
+      duration: Infinity,
     });
 
-    await publicClient
-      .waitForTransactionReceipt({
-        hash,
-        confirmations: 1,
-      })
-      .then(() => {
-        toast.success("Tip sent successfully!", {
-          id: toastId,
-          description: `You tipped @${post.author.username}`,
-        });
+    setToastId(toastId_);
+  }, [post.author, sendCalls]);
+
+  useEffect(() => {
+    if (callsStatus?.status === "CONFIRMED" && toastId !== null) {
+      toast.success("Tip sent successfully!", {
+        description: `You tipped @${post.author.username}`,
+        duration: 2000,
       });
-  }, [post.author]);
+
+      // Dismiss the original toast after the success toast is shown (dismissing immediately causes the success toast to not be shown)
+      setTimeout(() => {
+        toast.dismiss(toastId);
+      }, 0);
+
+      setToastId(null);
+      resetSendCalls();
+      onTipSuccess();
+    }
+  }, [
+    callsStatus,
+    toastId,
+    post.author,
+    resetSendCalls,
+    onTipSuccess,
+    setToastId,
+  ]);
 
   return (
     <div className="border rounded-lg p-4 bg-card">
@@ -165,7 +203,9 @@ function PostCard({ post }: { post: Post }) {
           size="sm"
           variant="outline"
           className="gap-1"
-          disabled={!account.address}
+          disabled={
+            !account.address || isCallsStatusLoading || isSendCallsPending
+          }
           onClick={handleTip}
         >
           <Send className="h-4 w-4" />

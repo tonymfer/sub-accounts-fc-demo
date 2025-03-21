@@ -1,17 +1,17 @@
 import { cookieStorage, createConfig, createStorage, http } from 'wagmi'
 import { baseSepolia } from 'wagmi/chains'
-import { coinbaseWallet } from 'wagmi/connectors'
+import { version4 } from './lib/connector'
 
 export function getConfig() {
   return createConfig({
     chains: [baseSepolia],
     connectors: [
-      coinbaseWallet({
-        preference: {
-          options: "smartWalletOnly",
-          keysUrl: 'https://keys-dev.coinbase.com/connect',
-        },
-      }),
+     version4({
+      preference: {
+        options: "smartWalletOnly",
+        keysUrl: "https://keys-dev.coinbase.com/connect",
+      },
+     })
     ],
     storage: createStorage({
       storage: cookieStorage,
