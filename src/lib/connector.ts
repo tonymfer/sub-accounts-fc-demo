@@ -31,6 +31,13 @@ type Version4Parameters = Mutable<
      * @default 'all'
      */
     preference?: Preference["options"] | Preference | undefined;
+    spendPermission?: {
+      token: `0x${string}`,
+      allowance: string;
+      period: number;
+      salt: string;
+      extraData: string;
+    },
   }
 >;
 
@@ -49,6 +56,9 @@ export function version4(parameters: Version4Parameters) {
       chainId: number;
     }>;
   };
+  type ConnectorConfig = Parameters<
+  Parameters<typeof createConnector<Provider, Properties>>[0]
+>[0]
 
   let walletProvider: Provider | undefined;
   let sdk: ReturnType<typeof createCoinbaseWalletSDK> | undefined;
@@ -57,7 +67,9 @@ export function version4(parameters: Version4Parameters) {
   let chainChanged: Connector["onChainChanged"] | undefined;
   let disconnect: Connector["onDisconnect"] | undefined;
 
-  async function getSdk(config: any) {
+  async function getSdk(
+    config: ConnectorConfig
+  ) {
     if (sdk) return sdk;
 
     const preference = (() => {
@@ -74,7 +86,10 @@ export function version4(parameters: Version4Parameters) {
       ...parameters,
       appChainIds: config.chains.map((x: Chain) => x.id),
       preference,
-      toSubAccountSigner: getCryptoKeyAccount
+      subAccounts: {
+        enableAutoSubAccounts: true,
+        dynamicSpendLimits: true  
+      }
     });
 
     sdk = sdk_;
@@ -89,13 +104,9 @@ export function version4(parameters: Version4Parameters) {
     type: coinbaseWallet.type,
     async connect({ chainId, ...rest } = {}) {
       try {
-        const sdk = await getSdk(config);
-
         const provider = await this.getProvider();
 
         const signer = await getCryptoKeyAccount();
-
-        console.log("signer", signer);
 
         const response = (await provider.request({
           method: "wallet_connect",
@@ -114,6 +125,7 @@ export function version4(parameters: Version4Parameters) {
                     ],
                   },
                 },
+                spendPermissions: parameters.spendPermission
               },
             },
           ],
@@ -127,18 +139,11 @@ export function version4(parameters: Version4Parameters) {
                 factoryData: Hex;
               };
             };
+            spendPermissions: any
           }[];
         };
 
-        // const accounts = (
-        //   (await provider.request({
-        //     method: 'eth_requestAccounts',
-        //     params:
-        //       'instantOnboarding' in rest && rest.instantOnboarding
-        //         ? [{ onboarding: 'instant' }]
-        //         : [],
-        //   })) as string[]
-        // ).map((x) => getAddress(x))
+        console.log("response", response);
 
         if (!accountsChanged) {
           accountsChanged = this.onAccountsChanged.bind(this);
@@ -164,7 +169,12 @@ export function version4(parameters: Version4Parameters) {
         }
 
         return {
-          accounts: [getAddress(response.accounts[0].capabilities.addSubAccount?.address ?? response.accounts[0].address)],
+          accounts: [
+            getAddress(
+              response.accounts[0].capabilities.addSubAccount?.address ??
+                response.accounts[0].address
+            ),
+          ],
           chainId: currentChainId,
         };
       } catch (error) {

@@ -1,17 +1,37 @@
-import { cookieStorage, createConfig, createStorage, http } from 'wagmi'
-import { baseSepolia } from 'wagmi/chains'
-import { version4 } from './lib/connector'
+import { numberToHex, parseEther, parseUnits, toHex } from "viem";
+import { cookieStorage, createConfig, createStorage, http, injected } from "wagmi";
+import { baseSepolia } from "wagmi/chains";
+import { version4 } from "./lib/connector";
 
 export function getConfig() {
   return createConfig({
     chains: [baseSepolia],
     connectors: [
-     version4({
-      preference: {
-        options: "smartWalletOnly",
-        keysUrl: "https://keys-dev.coinbase.com/connect",
-      },
-     })
+      version4({
+        preference: {
+          options: "smartWalletOnly",
+          keysUrl: "https://keys-dev.coinbase.com/connect",
+        },
+        subAccounts: {
+          enableAutoSubAccounts: true,
+          dynamicSpendLimits: true,
+          defaultSpendLimits: {
+            [baseSepolia.id]: [
+              {
+                allowance: numberToHex(parseEther("0.1")),
+                period: 24 * 60 * 60, // 1 day
+                token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              }
+            ]
+          }
+        },
+        paymasterUrls: {
+          [baseSepolia.id]: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL!,
+        }
+      }),
+      injected({
+        shimDisconnect: true,
+      })
     ],
     storage: createStorage({
       storage: cookieStorage,
@@ -20,11 +40,11 @@ export function getConfig() {
     transports: {
       [baseSepolia.id]: http(),
     },
-  })
+  });
 }
 
-declare module 'wagmi' {
+declare module "wagmi" {
   interface Register {
-    config: ReturnType<typeof getConfig>
+    config: ReturnType<typeof getConfig>;
   }
 }

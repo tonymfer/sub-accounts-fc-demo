@@ -1,12 +1,11 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useConnect, useDisconnect, useReadContract } from "wagmi";
 import Posts from "../components/posts";
-import { Button } from "@/components/ui/button";
-import { erc20Abi } from "viem";
 import { USDC_TOKEN_ADDRESS } from "../lib/constants";
-import { formatUnits } from "viem";
-import { Loader2 } from "lucide-react";
 
 function App() {
   const account = useAccount();
@@ -54,12 +53,17 @@ function App() {
               </Button>
             </div>
           ) : (
-            <Button
-              onClick={() => connect({ connector: connectors[0] })}
-              size="sm"
-            >
-              Connect Wallet
-            </Button>
+            <div className="flex gap-2">
+              {connectors.map((connector) => (
+                <Button
+                  key={connector.uid}
+                  onClick={() => connect({ connector })}
+                  size="sm"
+                >
+                  {connector.name}
+                </Button>
+              ))}
+            </div>
           )}
         </nav>
 

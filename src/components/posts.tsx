@@ -4,10 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Heart, Repeat2, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { encodeFunctionData, erc20Abi, parseUnits } from "viem";
-import { useAccount } from "wagmi";
-import { useSendCalls, useWaitForCallsStatus } from "wagmi/experimental";
-import { USDC_TOKEN_ADDRESS } from "../lib/constants";
+import { parseEther } from "viem";
+import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
 import { formatDate } from "../lib/utils";
 
 export interface Post {
@@ -87,70 +85,53 @@ function PostCard({
 }) {
   const account = useAccount();
   const {
-    sendCalls,
-    data: sendCallsId,
-    reset: resetSendCalls,
-    isPending: isSendCallsPending,
-  } = useSendCalls();
-  const { data: callsStatus, isLoading: isCallsStatusLoading } =
-    useWaitForCallsStatus({
-      id: sendCallsId,
+    sendTransaction,
+    data: hash,
+    isPending: isTransactionPending,
+    reset: resetTransaction,
+  } = useSendTransaction();
+  
+  const { isLoading: isConfirming, isSuccess: isConfirmed } =
+    useWaitForTransactionReceipt({
+      hash,
     });
   const [toastId, setToastId] = useState<string | number | null>(null);
 
   const handleTip = useCallback(async () => {
-    sendCalls({
-      calls: [
-        {
-          to: USDC_TOKEN_ADDRESS,
-          data: encodeFunctionData({
-            abi: erc20Abi,
-            functionName: "transfer",
-            args: [
-              post.author.verified_addresses.eth_addresses[0],
-              parseUnits("0.01", 6),
-            ],
-          }),
-          value: "0x0",
-        },
-      ],
-      capabilities: {
-        paymasterService: {
-          url: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL,
-        },
-      },
-      account: account.address,
+    sendTransaction({
+      to: post.author.verified_addresses.eth_addresses[0],
+      value: parseEther("0.0001"),
     });
 
     const toastId_ = toast("Sending tip...", {
-      description: `Tipping @${post.author.username}`,
+      description: `Tipping @${post.author.username} with 0.0001 ETH`,
       duration: Infinity,
     });
 
     setToastId(toastId_);
-  }, [post.author, sendCalls]);
+  }, [post.author, sendTransaction]);
 
   useEffect(() => {
-    if (callsStatus?.status === "CONFIRMED" && toastId !== null) {
+    if (isConfirmed && toastId !== null) {
       toast.success("Tip sent successfully!", {
-        description: `You tipped @${post.author.username}`,
+        description: `You tipped @${post.author.username} with 0.0001 ETH`,
         duration: 2000,
       });
 
-      // Dismiss the original toast after the success toast is shown (dismissing immediately causes the success toast to not be shown)
+      // Dismiss the original toast after the success toast is shown
       setTimeout(() => {
         toast.dismiss(toastId);
       }, 0);
 
       setToastId(null);
-      resetSendCalls();
+      resetTransaction();
       onTipSuccess();
     }
   }, [
-    callsStatus,
+    isConfirmed,
     toastId,
     post.author,
-    resetSendCalls,
+    resetTransaction,
     onTipSuccess,
     setToastId,
   ]);
@@ -204,12 +185,12 @@ function PostCard({
           variant="outline"
           className="gap-1"
           disabled={
-            !account.address || isCallsStatusLoading || isSendCallsPending
+            !account.address || isConfirming || isTransactionPending
           }
           onClick={handleTip}
         >
           <Send className="h-4 w-4" />
-          <span>Tip a penny</span>
+          <span>Tip 0.0001 ETH</span>
         </Button>
       </div>
     </div>
