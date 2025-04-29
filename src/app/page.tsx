@@ -1,26 +1,13 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { erc20Abi, formatUnits } from "viem";
-import { useAccount, useConnect, useDisconnect, useReadContract } from "wagmi";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 import Posts from "../components/posts";
-import { USDC_TOKEN_ADDRESS } from "../lib/constants";
 
 function App() {
   const account = useAccount();
   const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
-  const {
-    data: usdcBalance,
-    isFetching: isLoadingUsdcBalance,
-    refetch: refetchUsdcBalance,
-  } = useReadContract({
-    abi: erc20Abi,
-    address: USDC_TOKEN_ADDRESS,
-    functionName: "balanceOf",
-    args: [account.address as `0x${string}`],
-  });
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-between px-4 pb-4 md:pb-8 md:px-8">
@@ -29,14 +16,6 @@ function App() {
           <h1 className="text-2xl font-bold">Feed</h1>
           {account.status === "connected" ? (
             <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="text-sm items-center flex gap-1">
-                {isLoadingUsdcBalance && (
-                  <span className="inline-block animate-spin">
-                    <Loader2 className="w-4 h-4" />
-                  </span>
-                )}
-                {usdcBalance && <>${formatUnits(usdcBalance, 6)}</>}
-              </span>
               <span
                 className="text-sm text-muted-foreground cursor-pointer hover:opacity-80"
                 onClick={() => {
@@ -67,7 +46,7 @@ function App() {
           )}
         </nav>
 
-        <Posts onTipSuccess={refetchUsdcBalance} />
+        <Posts onTipSuccess={() => {}} />
       </div>
     </main>
   );
