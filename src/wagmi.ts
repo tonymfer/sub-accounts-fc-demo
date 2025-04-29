@@ -1,17 +1,18 @@
-import { numberToHex, parseEther, parseUnits, toHex } from "viem";
+import { numberToHex, parseEther } from "viem";
 import { cookieStorage, createConfig, createStorage, http, injected } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
-import { version4 } from "./lib/connector";
+import { coinbaseWallet } from "wagmi/connectors";
 
 export function getConfig() {
   return createConfig({
     chains: [baseSepolia],
     connectors: [
-      version4({
+      coinbaseWallet({
         preference: {
           options: "smartWalletOnly",
           keysUrl: "https://keys-dev.coinbase.com/connect",
         },
+        // @ts-ignore
         subAccounts: {
           enableAutoSubAccounts: true,
           dynamicSpendLimits: true,
