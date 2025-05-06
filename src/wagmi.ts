@@ -16,23 +16,20 @@ export function getConfig() {
         subAccounts: {
           enableAutoSubAccounts: true,
           dynamicSpendLimits: true,
-          defaultSpendLimits: {
-            [baseSepolia.id]: [
-              {
-                allowance: numberToHex(parseEther("0.1")),
-                period: 24 * 60 * 60, // 1 day
-                token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-              }
-            ]
-          }
+          // defaultSpendLimits: {
+          //   [baseSepolia.id]: [
+          //     {
+          //       allowance: numberToHex(parseEther("0.1")),
+          //       period: 24 * 60 * 60, // 1 day
+          //       token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          //     }
+          //   ]
+          // }
         },
         paymasterUrls: {
           [baseSepolia.id]: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL!,
         }
       }),
-      injected({
-        shimDisconnect: true,
-      })
     ],
     storage: createStorage({
       storage: cookieStorage,

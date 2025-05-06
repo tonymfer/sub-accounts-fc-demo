@@ -1,11 +1,21 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Heart, Repeat2, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { parseEther } from "viem";
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
+import { formatEther, parseEther, isAddress } from "viem";
+import { useAccount, useSendTransaction, useWaitForTransactionReceipt, useBalance } from "wagmi";
 import { formatDate } from "../lib/utils";
 
 export interface Post {
@@ -84,6 +94,9 @@ function PostCard({
   onTipSuccess: () => void;
 }) {
   const account = useAccount();
+  const { data: balance } = useBalance({
+    address: account.address,
+  });
   const {
     sendTransaction,
     data: hash,
@@ -96,6 +109,8 @@ function PostCard({
       hash,
     });
   const [toastId, setToastId] = useState<string | number | null>(null);
+  const [customTipAmount, setCustomTipAmount] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handleTip = useCallback(async () => {
     sendTransaction({
@@ -111,14 +126,44 @@ function PostCard({
     setToastId(toastId_);
   }, [post.author, sendTransaction]);
 
+  const handleCustomTip = useCallback(async () => {
+    if (!customTipAmount || !isAddress(post.author.verified_addresses.eth_addresses[0])) return;
+
+    try {
+      sendTransaction({
+        to: post.author.verified_addresses.eth_addresses[0],
+        value: parseEther(customTipAmount),
+      });
+
+      const toastId_ = toast("Sending custom tip...", {
+        description: `Tipping @${post.author.username} with ${customTipAmount} ETH`,
+        duration: Infinity,
+      });
+
+      setToastId(toastId_);
+      setIsDialogOpen(false);
+      setCustomTipAmount("");
+    } catch (error) {
+      toast.error("Invalid tip amount", {
+        description: "Please enter a valid ETH amount",
+      });
+    }
+  }, [customTipAmount, post.author, sendTransaction]);
+
+  const handlePercentageClick = useCallback((percentage: number) => {
+    if (!balance?.value) return;
+    
+    const amount = (Number(formatEther(balance.value)) * percentage).toFixed(4);
+    setCustomTipAmount(amount);
+  }, [balance]);
+
   useEffect(() => {
     if (isConfirmed && toastId !== null) {
       toast.success("Tip sent successfully!", {
-        description: `You tipped @${post.author.username} with 0.0001 ETH`,
+        description: `You tipped @${post.author.username} with ${hash ? customTipAmount : "0.0001"} ETH`,
         duration: 2000,
       });
 
-      // Dismiss the original toast after the success toast is shown
       setTimeout(() => {
         toast.dismiss(toastId);
       }, 0);
@@ -134,6 +179,8 @@ function PostCard({
     resetTransaction,
     onTipSuccess,
     setToastId,
+    hash,
+    customTipAmount
   ]);
 
   return (
@@ -180,18 +227,99 @@ function PostCard({
             <span>{post.reactions.recasts_count}</span>
           </div>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1"
-          disabled={
-            !account.address || isConfirming || isTransactionPending
-          }
-          onClick={handleTip}
-        >
-          <Send className="h-4 w-4" />
-          <span>Tip 0.0001 ETH</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1"
+            disabled={
+              !account.address || isConfirming || isTransactionPending
+            }
+            onClick={handleTip}
+          >
+            <Send className="h-4 w-4" />
+            <span>Tip 0.0001 ETH</span>
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                disabled={!account.address || isConfirming || isTransactionPending}
+              >
+                <Send className="h-4 w-4" />
+                <span>Custom Tip</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Send Custom Tip</DialogTitle>
+                <DialogDescription>
+                  Enter the amount of ETH you want to tip @{post.author.username}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-muted">
+                  <div className="text-sm text-muted-foreground">Your Balance</div>
+                  <div className="text-xl font-medium">
+                    {balance ? `${Number(formatEther(balance.value)).toFixed(4)} ETH` : "Loading..."}
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePercentageClick(0.1)}
+                    disabled={!balance}
+                  >
+                    10%
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePercentageClick(0.2)}
+                    disabled={!balance}
+                  >
+                    20%
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePercentageClick(0.5)}
+                    disabled={!balance}
+                  >
+                    50%
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePercentageClick(1)}
+                    disabled={!balance}
+                  >
+                    100%
+                  </Button>
+                </div>
+                <Input
+                  type="number"
+                  placeholder="0.0"
+                  step="0.0001"
+                  min="0"
+                  value={customTipAmount}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomTipAmount(e.target.value)}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={handleCustomTip}
+                  disabled={!customTipAmount || isConfirming || isTransactionPending}
+                >
+                  Send Tip
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
     </div>
   );
