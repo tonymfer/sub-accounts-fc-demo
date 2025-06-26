@@ -1,5 +1,11 @@
 import { numberToHex, parseEther } from "viem";
-import { cookieStorage, createConfig, createStorage, http, injected } from "wagmi";
+import {
+  cookieStorage,
+  createConfig,
+  createStorage,
+  http,
+  injected,
+} from "wagmi";
 import { baseSepolia } from "wagmi/chains";
 import { coinbaseWallet } from "wagmi/connectors";
 
@@ -15,7 +21,6 @@ export function getConfig() {
         // @ts-ignore
         subAccounts: {
           enableAutoSubAccounts: true,
-          dynamicSpendLimits: true,
           // defaultSpendLimits: {
           //   [baseSepolia.id]: [
           //     {
@@ -28,7 +33,7 @@ export function getConfig() {
         },
         paymasterUrls: {
           [baseSepolia.id]: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL!,
-        }
+        },
       }),
     ],
     storage: createStorage({
