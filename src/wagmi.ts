@@ -15,7 +15,8 @@ export function getConfig() {
           enableAutoSubAccounts: true,
         },
         paymasterUrls: {
-          [baseSepolia.id]: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL!,
+          [baseSepolia.id]: process.env
+            .NEXT_PUBLIC_PAYMASTER_SERVICE_URL as string,
         },
       }),
     ],

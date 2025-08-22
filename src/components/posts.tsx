@@ -14,8 +14,14 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Heart, Repeat2, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { formatEther, parseEther, isAddress } from "viem";
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt, useBalance } from "wagmi";
+import { formatUnits, parseUnits, isAddress, encodeFunctionData } from "viem";
+import {
+  useAccount,
+  useWaitForTransactionReceipt,
+  useBalance,
+  useSendTransaction,
+} from "wagmi";
+import { USDC, erc20Abi } from "@/lib/usdc";
 import { formatDate } from "../lib/utils";
 
 export interface Post {
@@ -96,6 +102,7 @@ function PostCard({
   const account = useAccount();
   const { data: balance } = useBalance({
     address: account.address,
+    token: USDC.address,
   });
   const {
     sendTransaction,
@@ -103,7 +110,7 @@ function PostCard({
     isPending: isTransactionPending,
     reset: resetTransaction,
   } = useSendTransaction();
-  
+
   const { isLoading: isConfirming, isSuccess: isConfirmed } =
     useWaitForTransactionReceipt({
       hash,
@@ -113,13 +120,23 @@ function PostCard({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handleTip = useCallback(async () => {
+    const data = encodeFunctionData({
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [
+        post.author.verified_addresses.eth_addresses[0],
+        parseUnits("0.10", USDC.decimals),
+      ],
+    });
+
     sendTransaction({
-      to: post.author.verified_addresses.eth_addresses[0],
-      value: parseEther("0.0001"),
+      to: USDC.address,
+      data,
+      value: 0n,
     });
 
     const toastId_ = toast("Sending tip...", {
-      description: `Tipping @${post.author.username} with 0.0001 ETH`,
+      description: `Tipping @${post.author.username} with 0.10 USDC`,
       duration: Infinity,
     });
 
@@ -127,40 +144,58 @@ function PostCard({
   }, [post.author, sendTransaction]);
 
   const handleCustomTip = useCallback(async () => {
-    if (!customTipAmount || !isAddress(post.author.verified_addresses.eth_addresses[0])) return;
+    if (
+      !customTipAmount ||
+      !isAddress(post.author.verified_addresses.eth_addresses[0])
+    )
+      return;
 
     try {
+      const data = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [
+          post.author.verified_addresses.eth_addresses[0],
+          parseUnits(customTipAmount, USDC.decimals),
+        ],
+      });
+
       sendTransaction({
-        to: post.author.verified_addresses.eth_addresses[0],
-        value: parseEther(customTipAmount),
+        to: USDC.address,
+        data,
+        value: 0n,
       });
 
       const toastId_ = toast("Sending custom tip...", {
-        description: `Tipping @${post.author.username} with ${customTipAmount} ETH`,
+        description: `Tipping @${post.author.username} with ${customTipAmount} USDC`,
         duration: Infinity,
       });
 
       setToastId(toastId_);
       setIsDialogOpen(false);
       setCustomTipAmount("");
-    } catch (error) {
+    } catch (_error) {
       toast.error("Invalid tip amount", {
-        description: "Please enter a valid ETH amount",
+        description: "Please enter a valid USDC amount",
       });
     }
   }, [customTipAmount, post.author, sendTransaction]);
 
-  const handlePercentageClick = useCallback((percentage: number) => {
-    if (!balance?.value) return;
-    
-    const amount = (Number(formatEther(balance.value)) * percentage).toFixed(4);
-    setCustomTipAmount(amount);
-  }, [balance]);
+  const handlePercentageClick = useCallback(
+    (percentage: number) => {
+      if (!balance?.value) return;
+      const amount = (
+        Number(formatUnits(balance.value, USDC.decimals)) * percentage
+      ).toFixed(2);
+      setCustomTipAmount(amount);
+    },
+    [balance]
+  );
 
   useEffect(() => {
     if (isConfirmed && toastId !== null) {
       toast.success("Tip sent successfully!", {
-        description: `You tipped @${post.author.username} with ${hash ? customTipAmount : "0.0001"} ETH`,
+        description: `You tipped @${post.author.username} with ${hash ? customTipAmount : "0.10"} USDC`,
         duration: 2000,
       });
 
@@ -180,7 +215,7 @@ function PostCard({
     onTipSuccess,
     setToastId,
     hash,
-    customTipAmount
+    customTipAmount,
   ]);
 
   return (
@@ -232,13 +267,11 @@ function PostCard({
             size="sm"
             variant="outline"
             className="gap-1"
-            disabled={
-              !account.address || isConfirming || isTransactionPending
-            }
+            disabled={!account.address || isConfirming || isTransactionPending}
             onClick={handleTip}
           >
             <Send className="h-4 w-4" />
-            <span>Tip 0.0001 ETH</span>
+            <span>Tip 0.10 USDC</span>
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -246,7 +279,9 @@ function PostCard({
                 size="sm"
                 variant="outline"
                 className="gap-1"
-                disabled={!account.address || isConfirming || isTransactionPending}
+                disabled={
+                  !account.address || isConfirming || isTransactionPending
+                }
               >
                 <Send className="h-4 w-4" />
                 <span>Custom Tip</span>
@@ -254,16 +289,29 @@ function PostCard({
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Send Custom Tip</DialogTitle>
+                <DialogTitle>Send Custom Tip (USDC)</DialogTitle>
                 <DialogDescription>
-                  Enter the amount of ETH you want to tip @{post.author.username}
+                  Enter the amount of USDC you want to tip @
+                  {post.author.username}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="p-4 rounded-lg bg-muted">
-                  <div className="text-sm text-muted-foreground">Your Balance</div>
+                  <div className="text-sm text-muted-foreground">
+                    Your Balance{" "}
+                    <a
+                      href="https://faucet.circle.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:opacity-80"
+                    >
+                      Get USDC
+                    </a>
+                  </div>
                   <div className="text-xl font-medium">
-                    {balance ? `${Number(formatEther(balance.value)).toFixed(4)} ETH` : "Loading..."}
+                    {balance
+                      ? `${Number(formatUnits(balance.value, USDC.decimals)).toFixed(2)} USDC`
+                      : "Loading..."}
                   </div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -303,16 +351,20 @@ function PostCard({
                 <Input
                   type="number"
                   placeholder="0.0"
-                  step="0.0001"
+                  step="0.01"
                   min="0"
                   value={customTipAmount}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomTipAmount(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setCustomTipAmount(e.target.value)
+                  }
                 />
               </div>
               <DialogFooter>
                 <Button
                   onClick={handleCustomTip}
-                  disabled={!customTipAmount || isConfirming || isTransactionPending}
+                  disabled={
+                    !customTipAmount || isConfirming || isTransactionPending
+                  }
                 >
                   Send Tip
                 </Button>

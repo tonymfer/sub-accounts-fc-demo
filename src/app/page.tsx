@@ -1,7 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useAccount, useConnect, useDisconnect, useBalance, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
+import {
+  useAccount,
+  useConnect,
+  useDisconnect,
+  useBalance,
+  useWaitForTransactionReceipt,
+  useSendTransaction,
+} from "wagmi";
 import Posts from "../components/posts";
 import {
   Dialog,
@@ -14,8 +21,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useState, useCallback, useEffect } from "react";
-import { parseEther, isAddress } from "viem";
+import { parseUnits, isAddress, encodeFunctionData } from "viem";
 import { toast } from "sonner";
+import { USDC, erc20Abi } from "@/lib/usdc";
 
 function App() {
   const account = useAccount();
@@ -23,9 +31,10 @@ function App() {
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({
     address: account.address,
+    token: USDC.address,
     query: {
       refetchInterval: 1000,
-    }
+    },
   });
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -54,13 +63,20 @@ function App() {
     }
 
     try {
-      sendTransaction({
-        to: toAddress as `0x${string}`,
-        value: parseEther(amount),
+      const data = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [toAddress as `0x${string}`, parseUnits(amount, USDC.decimals)],
       });
 
-      const toastId_ = toast("Sending ETH...", {
-        description: `Sending ${amount} ETH to ${toAddress}`,
+      sendTransaction({
+        to: USDC.address,
+        data,
+        value: 0n,
+      });
+
+      const toastId_ = toast("Sending USDC...", {
+        description: `Sending ${amount} USDC to ${toAddress}`,
         duration: Infinity,
       });
 
@@ -68,7 +84,7 @@ function App() {
       setIsDialogOpen(false);
       setAmount("");
       setToAddress("");
-    } catch (error) {
+    } catch (_error) {
       toast.error("Transaction failed", {
         description: "Please try again",
       });
@@ -78,7 +94,7 @@ function App() {
   useEffect(() => {
     if (isConfirmed && toastId !== null) {
       toast.success("Transaction successful!", {
-        description: `Sent ${amount} ETH to ${toAddress}`,
+        description: `Sent ${amount} USDC to ${toAddress}`,
         duration: 2000,
       });
 
@@ -98,16 +114,23 @@ function App() {
           <h1 className="text-2xl font-bold">Feed</h1>
           {account.status === "connected" ? (
             <div className="flex items-center gap-2 text-muted-foreground">
-              <span
+              <button
+                type="button"
                 className="text-sm text-muted-foreground cursor-pointer hover:opacity-80"
                 onClick={() => {
                   navigator.clipboard.writeText(account.address || "");
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    navigator.clipboard.writeText(account.address || "");
+                  }
+                }}
+                aria-label="Click to copy address"
                 title="Click to copy address"
               >
                 {account.address?.slice(0, 6)}...
                 {account.address?.slice(-4)}
-              </span>
+              </button>
 
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
@@ -117,16 +140,28 @@ function App() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Send ETH</DialogTitle>
+                    <DialogTitle>Send USDC</DialogTitle>
                     <DialogDescription>
                       Enter the recipient address and amount to send
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="p-4 rounded-lg bg-muted">
-                      <div className="text-sm text-muted-foreground">Your Balance</div>
+                      <div className="text-sm text-muted-foreground">
+                        Your Balance{" "}
+                        <a
+                          href="https://faucet.circle.com/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:opacity-80"
+                        >
+                          Get USDC
+                        </a>
+                      </div>
                       <div className="text-xl font-medium">
-                        {balance ? `${balance.formatted} ${balance.symbol}` : "Loading..."}
+                        {balance
+                          ? `${balance.formatted} ${balance.symbol}`
+                          : "Loading..."}
                       </div>
                     </div>
                     <Input
@@ -136,8 +171,8 @@ function App() {
                     />
                     <Input
                       type="number"
-                      placeholder="Amount in ETH"
-                      step="0.0001"
+                      placeholder="Amount in USDC"
+                      step="0.01"
                       min="0"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
@@ -146,13 +181,27 @@ function App() {
                   <DialogFooter>
                     <Button
                       onClick={handleSend}
-                      disabled={!amount || !toAddress || isConfirming || isTransactionPending}
+                      disabled={
+                        !amount ||
+                        !toAddress ||
+                        isConfirming ||
+                        isTransactionPending
+                      }
                     >
-                      Send ETH
+                      Send USDC
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+
+              <a
+                href="https://faucet.circle.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary underline hover:opacity-80"
+              >
+                Get USDC
+              </a>
 
               <Button variant="outline" onClick={() => disconnect()} size="sm">
                 Disconnect
