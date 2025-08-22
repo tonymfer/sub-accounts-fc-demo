@@ -1,35 +1,18 @@
-import { numberToHex, parseEther } from "viem";
-import {
-  cookieStorage,
-  createConfig,
-  createStorage,
-  http,
-  injected,
-} from "wagmi";
+import { cookieStorage, createConfig, createStorage, http } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
-import { coinbaseWallet } from "wagmi/connectors";
+import { baseAccount } from "wagmi/connectors";
 
 export function getConfig() {
   return createConfig({
     chains: [baseSepolia],
     connectors: [
-      coinbaseWallet({
+      baseAccount({
         preference: {
-          options: "smartWalletOnly",
-          keysUrl: "https://keys-dev.coinbase.com/connect",
+          walletUrl: "https://keys-dev.coinbase.com/connect",
         },
-        // @ts-ignore
         subAccounts: {
+          // @ts-ignore
           enableAutoSubAccounts: true,
-          // defaultSpendLimits: {
-          //   [baseSepolia.id]: [
-          //     {
-          //       allowance: numberToHex(parseEther("0.1")),
-          //       period: 24 * 60 * 60, // 1 day
-          //       token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-          //     }
-          //   ]
-          // }
         },
         paymasterUrls: {
           [baseSepolia.id]: process.env.NEXT_PUBLIC_PAYMASTER_SERVICE_URL!,
