@@ -155,7 +155,7 @@ function App() {
                           rel="noopener noreferrer"
                           className="underline hover:opacity-80"
                         >
-                          Get USDC
+                          Get USDC on Base Sepolia
                         </a>
                       </div>
                       <div className="text-xl font-medium">
@@ -200,7 +200,7 @@ function App() {
                 rel="noopener noreferrer"
                 className="text-xs text-primary underline hover:opacity-80"
               >
-                Get USDC
+                Get USDC on Base Sepolia
               </a>
 
               <Button variant="outline" onClick={() => disconnect()} size="sm">
