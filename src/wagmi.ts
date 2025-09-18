@@ -7,9 +7,6 @@ export function getConfig() {
     chains: [baseSepolia],
     connectors: [
       baseAccount({
-        preference: {
-          walletUrl: "https://keys-dev.coinbase.com/connect",
-        },
         subAccounts: {
           // @ts-ignore
           enableAutoSubAccounts: true,
