@@ -7,6 +7,7 @@ export function getConfig() {
     chains: [baseSepolia],
     connectors: [
       baseAccount({
+        appName: "Sub Accounts Demo",
         subAccounts: {
           // @ts-ignore
           enableAutoSubAccounts: true,
