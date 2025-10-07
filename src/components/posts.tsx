@@ -10,18 +10,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Heart, Repeat2, Send } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { USDC, erc20Abi } from "@/lib/usdc";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { ExternalLink, Heart, Repeat2, Send, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { formatUnits, parseUnits, isAddress, encodeFunctionData } from "viem";
+import { encodeFunctionData, formatUnits, isAddress, parseUnits } from "viem";
 import {
   useAccount,
-  useWaitForTransactionReceipt,
   useBalance,
   useSendTransaction,
+  useWaitForTransactionReceipt,
 } from "wagmi";
-import { USDC, erc20Abi } from "@/lib/usdc";
 import { formatDate } from "../lib/utils";
 
 export interface Post {
@@ -57,10 +57,17 @@ export interface Post {
 
 interface PostsResponse {
   posts: Post[];
+  nextCursor: string | null;
 }
 
-const fetchPosts = async (): Promise<PostsResponse> => {
-  const response = await fetch("/api/posts");
+const fetchPosts = async ({
+  pageParam,
+}: {
+  pageParam?: string;
+}): Promise<PostsResponse> => {
+  const url = pageParam ? `/api/posts?cursor=${pageParam}` : "/api/posts";
+
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error("Failed to fetch posts");
   }
@@ -68,42 +75,21 @@ const fetchPosts = async (): Promise<PostsResponse> => {
 };
 
 export default function Posts({ onTipSuccess }: { onTipSuccess: () => void }) {
-  const { data, isLoading, error } = useQuery<PostsResponse>({
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["posts"],
     queryFn: fetchPosts,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined,
   });
 
-  if (isLoading) {
-    return <div className="text-center py-8">Loading posts...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-8 text-red-500">Error loading posts</div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {data?.posts.map((post) => (
-        <PostCard key={post.id} post={post} onTipSuccess={onTipSuccess} />
-      ))}
-    </div>
-  );
-}
-
-function PostCard({
-  post,
-  onTipSuccess,
-}: {
-  post: Post;
-  onTipSuccess: () => void;
-}) {
-  const account = useAccount();
-  const { data: balance } = useBalance({
-    address: account.address,
-    token: USDC.address,
-  });
+  // Shared transaction state across all posts to prevent concurrent tipping
   const {
     sendTransaction,
     data: hash,
@@ -115,11 +101,125 @@ function PostCard({
     useWaitForTransactionReceipt({
       hash,
     });
+
+  // Track which post is currently being tipped
+  const [tippingPostId, setTippingPostId] = useState<string | null>(null);
+
+  // Intersection observer for infinite scroll
+  const observerTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  if (isLoading) {
+    return <div className="text-center py-8">Loading posts...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8 text-red-500">Error loading posts</div>
+    );
+  }
+
+  // Flatten all pages and filter posts to only show those with valid eth addresses
+  const allPosts = data?.pages.flatMap((page) => page.posts) || [];
+  const postsWithValidAddresses = allPosts.filter(
+    (post: Post) =>
+      post.author.verified_addresses.eth_addresses &&
+      post.author.verified_addresses.eth_addresses.length > 0 &&
+      isAddress(post.author.verified_addresses.eth_addresses[0])
+  );
+
+  return (
+    <div className="space-y-4">
+      {postsWithValidAddresses.map((post) => (
+        <PostCard
+          key={post.id}
+          post={post}
+          onTipSuccess={onTipSuccess}
+          sendTransaction={sendTransaction}
+          isTransactionPending={isTransactionPending}
+          isConfirming={isConfirming}
+          isConfirmed={isConfirmed}
+          resetTransaction={resetTransaction}
+          tippingPostId={tippingPostId}
+          setTippingPostId={setTippingPostId}
+        />
+      ))}
+
+      {/* Intersection observer target */}
+      <div ref={observerTarget} className="py-4">
+        {isFetchingNextPage && (
+          <div className="flex justify-center items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Loading more posts...</span>
+          </div>
+        )}
+        {!hasNextPage && postsWithValidAddresses.length > 0 && (
+          <div className="text-center text-muted-foreground text-sm">
+            No more posts to load
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PostCard({
+  post,
+  onTipSuccess,
+  sendTransaction,
+  isTransactionPending,
+  isConfirming,
+  isConfirmed,
+  resetTransaction,
+  tippingPostId,
+  setTippingPostId,
+}: {
+  post: Post;
+  onTipSuccess: () => void;
+  sendTransaction: ReturnType<typeof useSendTransaction>["sendTransaction"];
+  isTransactionPending: boolean;
+  isConfirming: boolean;
+  isConfirmed: boolean;
+  resetTransaction: () => void;
+  tippingPostId: string | null;
+  setTippingPostId: (id: string | null) => void;
+}) {
+  const account = useAccount();
+  const { data: balance } = useBalance({
+    address: account.address,
+    token: USDC.address,
+  });
   const [toastId, setToastId] = useState<string | number | null>(null);
   const [customTipAmount, setCustomTipAmount] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Check if this specific post is the one being tipped
+  const isThisPostTipping = tippingPostId === post.id;
+
   const handleTip = useCallback(async () => {
+    setTippingPostId(post.id);
+
     const data = encodeFunctionData({
       abi: erc20Abi,
       functionName: "transfer",
@@ -141,7 +241,7 @@ function PostCard({
     });
 
     setToastId(toastId_);
-  }, [post.author, sendTransaction]);
+  }, [post.author, post.id, sendTransaction, setTippingPostId]);
 
   const handleCustomTip = useCallback(async () => {
     if (
@@ -151,6 +251,8 @@ function PostCard({
       return;
 
     try {
+      setTippingPostId(post.id);
+
       const data = encodeFunctionData({
         abi: erc20Abi,
         functionName: "transfer",
@@ -179,7 +281,13 @@ function PostCard({
         description: "Please enter a valid USDC amount",
       });
     }
-  }, [customTipAmount, post.author, sendTransaction]);
+  }, [
+    customTipAmount,
+    post.author,
+    post.id,
+    sendTransaction,
+    setTippingPostId,
+  ]);
 
   const handlePercentageClick = useCallback(
     (percentage: number) => {
@@ -193,9 +301,9 @@ function PostCard({
   );
 
   useEffect(() => {
-    if (isConfirmed && toastId !== null) {
+    if (isConfirmed && toastId !== null && isThisPostTipping) {
       toast.success("Tip sent successfully!", {
-        description: `You tipped @${post.author.username} with ${hash ? customTipAmount : "0.10"} USDC`,
+        description: `You tipped @${post.author.username} with ${customTipAmount || "0.10"} USDC`,
         duration: 2000,
       });
 
@@ -204,6 +312,7 @@ function PostCard({
       }, 0);
 
       setToastId(null);
+      setTippingPostId(null);
       resetTransaction();
       onTipSuccess();
     }
@@ -213,9 +322,9 @@ function PostCard({
     post.author,
     resetTransaction,
     onTipSuccess,
-    setToastId,
-    hash,
     customTipAmount,
+    isThisPostTipping,
+    setTippingPostId,
   ]);
 
   return (
@@ -269,9 +378,20 @@ function PostCard({
             className="gap-1"
             disabled={!account.address || isConfirming || isTransactionPending}
             onClick={handleTip}
+            title={
+              isTransactionPending || isConfirming
+                ? isThisPostTipping
+                  ? "Sending tip..."
+                  : "A tip is already being sent"
+                : undefined
+            }
           >
             <Send className="h-4 w-4" />
-            <span>Tip 0.10 USDC</span>
+            <span>
+              {isThisPostTipping && (isTransactionPending || isConfirming)
+                ? "Tipping..."
+                : "Tip 0.10 USDC"}
+            </span>
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -281,6 +401,13 @@ function PostCard({
                 className="gap-1"
                 disabled={
                   !account.address || isConfirming || isTransactionPending
+                }
+                title={
+                  isTransactionPending || isConfirming
+                    ? isThisPostTipping
+                      ? "Sending tip..."
+                      : "A tip is already being sent"
+                    : undefined
                 }
               >
                 <Send className="h-4 w-4" />
