@@ -9,8 +9,8 @@ export function getConfig() {
       baseAccount({
         appName: "Sub Accounts Demo",
         subAccounts: {
-          // @ts-ignore
-          enableAutoSubAccounts: true,
+          creation: "on-connect",
+          defaultAccount: "sub",
         },
         paymasterUrls: {
           [baseSepolia.id]: process.env
