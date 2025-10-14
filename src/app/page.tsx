@@ -179,7 +179,17 @@ function App() {
     <main className="flex min-h-screen flex-col items-center justify-between px-4 pb-4 md:pb-8 md:px-8">
       <div className="w-full max-w-2xl mx-auto">
         <nav className="flex justify-between items-center sticky top-0 bg-background z-10 py-4">
-          <h1 className="text-2xl font-bold">Feed</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Feed</h1>
+            <a
+              href="https://github.com/stephancill/sub-accounts-fc-demo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors underline"
+            >
+              Github
+            </a>
+          </div>
           {account.status === "connected" ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <div className="flex flex-col items-end gap-0.5">
